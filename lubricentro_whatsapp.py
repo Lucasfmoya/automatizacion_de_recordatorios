@@ -10,7 +10,6 @@
 
   Uso:
     python lubricentro_whatsapp.py
-
 =============================================================
 """
 
@@ -38,11 +37,11 @@ FILA_ENCABEZADOS = 1
 
 # ── Columnas Excel ──────────────────────────────────────────
 COL_CLIENTE       = "Cliente"
-COL_TELEFONO      = "Contacto"          
+COL_TELEFONO      = "Contacto"
 COL_AUTO          = "Auto"
 COL_PATENTE       = "Patente"
 COL_KMTS_PROX     = "Kmts Prox. Cambio"
-COL_NUM_CONTACTOS = "Num de contacto"    
+COL_NUM_CONTACTOS = "Num de contacto"
 COL_FECHA_ENVIO   = "Repuesta 1"
 
 # ── Configuración envío ─────────────────────────────────────
@@ -51,7 +50,8 @@ CANTIDAD_POR_TANDA = 10
 DELAY_MIN = 4
 DELAY_MAX = 6
 
-ESPERA_CARGA_CHAT = 3
+# ⚠️ Tiempo de espera para que cargue WhatsApp
+ESPERA_CARGA_CHAT = 6
 
 PREFIJO = "549"
 
@@ -75,50 +75,6 @@ _Promoción válida abonando en efectivo o transferencia._
 # FUNCIONES
 # ─────────────────────────────────────────────────────────────
 
-def limpiar_telefono(raw):
-    """
-    Limpia el campo teléfono de la columna B.
-    Soporta formatos como:
-      -Cel:3512078250
-      ' -Cel: 3512078250'  (con espacios)
-      -Cel:3512078250 -Cel:3516789012  (dos números → toma el primero)
-      3512078250
-    Devuelve el número normalizado para wa.me (con prefijo 549).
-    """
-    if not raw:
-        return None
-
-    texto = str(raw).strip()
-
-    # Quitar todos los prefijos posibles incluyendo variantes con espacios
-    for prefijo in ["-Cel:", "Cel:", "-cel:", "cel:", "-CEL:", "CEL:"]:
-        texto = texto.replace(prefijo, " ")
-
-    # Quitar guiones sueltos que no son parte de un número
-    texto = texto.replace("-", " ")
-
-    # Dividir por espacios y tomar el primer bloque con suficientes dígitos
-    partes = texto.split()
-    numero_raw = None
-    for parte in partes:
-        digitos = "".join(c for c in parte if c.isdigit())
-        if len(digitos) >= 8:
-            numero_raw = digitos
-            break
-
-    if not numero_raw:
-        return None
-
-    # Normalizar prefijo
-    if numero_raw.startswith("0"):
-        numero_raw = numero_raw[1:]
-
-    if numero_raw.startswith("54"):
-        return numero_raw
-
-    return PREFIJO + numero_raw
-
-
 def formatear_km(km):
     """Formatea kilómetros con puntos de miles"""
     try:
@@ -129,6 +85,7 @@ def formatear_km(km):
 
 def formatear_auto(texto):
     """Capitaliza nombre del vehículo respetando siglas"""
+
     if not texto:
         return ""
 
@@ -138,6 +95,7 @@ def formatear_auto(texto):
     }
 
     palabras = str(texto).strip().split()
+
     resultado = []
 
     for p in palabras:
@@ -150,43 +108,86 @@ def formatear_auto(texto):
 
 
 def cargar_excel():
-    """Carga el workbook y devuelve hoja y mapa de columnas"""
+    """Carga workbook y devuelve hoja + encabezados"""
+
+    print("\n⏳ Abriendo workbook...")
+
     try:
-        wb = openpyxl.load_workbook(RUTA_EXCEL)
+
+        wb = openpyxl.load_workbook(
+            RUTA_EXCEL,
+            data_only=True
+        )
+
     except FileNotFoundError:
-        print(f"\n❌ No encontré el archivo:\n   {RUTA_EXCEL}")
-        mostrar_alerta_error("No encontré el archivo Excel.")
+
+        print(f"\n❌ No encontré el archivo:\n{RUTA_EXCEL}")
+
+        mostrar_alerta_error(
+            "No encontré el archivo Excel."
+        )
+
         sys.exit(1)
 
+    except Exception as e:
+
+        print(f"\n❌ Error abriendo Excel:\n{e}")
+
+        mostrar_alerta_error(str(e))
+
+        sys.exit(1)
+
+    print("✅ Workbook abierto")
+
     if NOMBRE_HOJA not in wb.sheetnames:
+
         print(f"\n❌ La hoja '{NOMBRE_HOJA}' no existe.")
-        print(f"   Hojas disponibles: {wb.sheetnames}")
-        mostrar_alerta_error("La hoja configurada no existe.")
+
+        mostrar_alerta_error(
+            f"La hoja '{NOMBRE_HOJA}' no existe."
+        )
+
         sys.exit(1)
 
     ws = wb[NOMBRE_HOJA]
 
     encabezados = {}
-    for col in ws.iter_cols(min_row=FILA_ENCABEZADOS, max_row=FILA_ENCABEZADOS):
+
+    for col in ws.iter_cols(
+        min_row=FILA_ENCABEZADOS,
+        max_row=FILA_ENCABEZADOS
+    ):
+
         for cell in col:
+
             if cell.value:
-                encabezados[str(cell.value).strip()] = cell.column
+
+                encabezados[
+                    str(cell.value).strip()
+                ] = cell.column
+
+    print("✅ Base cargada correctamente")
 
     return wb, ws, encabezados
 
 
 def obtener_col(encabezados, nombre_col):
-    """Busca columna por nombre exacto, luego parcial"""
+    """Busca columna exacta o parcial"""
+
     if nombre_col in encabezados:
         return encabezados[nombre_col]
+
     for k, v in encabezados.items():
+
         if nombre_col.lower() in k.lower():
             return v
+
     return None
 
 
 def seleccionar_contactos(ws, encabezados):
-    """Devuelve contactos con Num de contacto vacío (nunca notificados)"""
+    """Devuelve contactos pendientes"""
+
     col_tel    = obtener_col(encabezados, COL_TELEFONO)
     col_auto   = obtener_col(encabezados, COL_AUTO)
     col_pat    = obtener_col(encabezados, COL_PATENTE)
@@ -196,105 +197,193 @@ def seleccionar_contactos(ws, encabezados):
     col_fecha  = obtener_col(encabezados, COL_FECHA_ENVIO)
 
     if not col_tel or not col_pat or not col_km:
+
         print("\n❌ Faltan columnas clave.")
-        mostrar_alerta_error("Faltan columnas clave en el Excel.")
+
+        mostrar_alerta_error(
+            "Faltan columnas clave en el Excel."
+        )
+
         sys.exit(1)
 
     contactos = []
 
-    for row in ws.iter_rows(min_row=FILA_ENCABEZADOS + 1, values_only=False):
-        fila_num      = row[0].row
-        telefono_raw  = row[col_tel - 1].value    if col_tel    else None
-        auto_raw      = row[col_auto - 1].value   if col_auto   else ""
-        patente       = row[col_pat - 1].value    if col_pat    else None
-        km            = row[col_km - 1].value     if col_km     else None
-        nombre        = row[col_nombre - 1].value if col_nombre else ""
-        num_contactos = row[col_num - 1].value    if col_num    else None
+    ultima_fila = ws.max_row
 
-        # Saltar filas sin datos esenciales
-        if not telefono_raw or not patente or not km:
-            continue
+    # Limitar por seguridad
+    if ultima_fila > 10000:
+        ultima_fila = 10000
 
-        # Solo incluir los que tienen la columna vacía (nunca notificados)
-        if num_contactos is None or num_contactos == "":
-            pass
-        else:
-            continue
+    print("\n⏳ Analizando contactos...")
 
-        telefono = limpiar_telefono(telefono_raw)
-        if not telefono:
-            continue
+    for i, row in enumerate(
 
-        contactos.append({
-            "fila":      fila_num,
-            "telefono":  telefono,
-            "auto":      formatear_auto(auto_raw),
-            "patente":   str(patente).strip().upper(),
-            "km":        formatear_km(km),
-            "nombre":    str(nombre).strip() if nombre else "Cliente",
-            "col_num":   col_num,
-            "col_fecha": col_fecha,
-        })
+        ws.iter_rows(
+            min_row=FILA_ENCABEZADOS + 1,
+            max_row=ultima_fila,
+            values_only=True
+        ),
+
+        start=2
+    ):
+
+        try:
+
+            telefono_raw  = row[col_tel - 1]    if col_tel    else None
+            auto_raw      = row[col_auto - 1]   if col_auto   else ""
+            patente       = row[col_pat - 1]    if col_pat    else None
+            km            = row[col_km - 1]     if col_km     else None
+            nombre        = row[col_nombre - 1] if col_nombre else ""
+            num_contactos = row[col_num - 1]    if col_num    else None
+
+            # Saltar filas vacías
+            if not telefono_raw or not patente or not km:
+                continue
+
+            # Solo pendientes
+            if num_contactos not in [None, ""]:
+                continue
+
+            telefono = str(telefono_raw).strip()
+
+            # Normalizar número
+            if telefono.startswith("0"):
+                telefono = telefono[1:]
+
+            if not telefono.startswith("54"):
+                telefono = PREFIJO + telefono
+
+            contactos.append({
+
+                "fila":      i,
+                "telefono":  telefono,
+                "auto":      formatear_auto(auto_raw),
+                "patente":   str(patente).strip().upper(),
+                "km":        formatear_km(km),
+                "nombre":    str(nombre).strip() if nombre else "Cliente",
+                "col_num":   col_num,
+                "col_fecha": col_fecha,
+
+            })
+
+        except Exception as e:
+
+            print(f"⚠️ Error fila {i}: {e}")
+
+    print(f"✅ Pendientes encontrados: {len(contactos)}")
 
     return contactos
 
 
 def enviar_mensaje(contacto):
-    """Abre WhatsApp Desktop y envía el mensaje"""
+    """Abre WhatsApp Desktop y envía"""
+
     mensaje = MENSAJE.format(
         auto=contacto["auto"],
         patente=contacto["patente"],
         km=contacto["km"]
     )
 
-    mensaje_url = urllib.parse.quote(mensaje, safe="")
+    mensaje_url = urllib.parse.quote(
+        mensaje,
+        safe=""
+    )
+
     url = (
         f"whatsapp://send?"
         f"phone={contacto['telefono']}"
         f"&text={mensaje_url}"
     )
 
-    print(f"   📱 Abriendo WhatsApp con {contacto['nombre']} ({contacto['patente']})...")
+    print(
+        f"📱 {contacto['nombre']} "
+        f"({contacto['patente']})"
+    )
+
     webbrowser.open(url)
+
+    # Esperar apertura inicial
+    time.sleep(2)
+
+    # Esperar carga completa del chat
     time.sleep(ESPERA_CARGA_CHAT)
 
+    # Asegurar foco
+    pyautogui.click()
+
+    time.sleep(1)
+
+    # Enviar mensaje
     pyautogui.press("enter")
-    print(f"   ✅ Mensaje enviado a {contacto['telefono']}")
+
+    # Espera extra para asegurar envío
+    time.sleep(1.5)
+
+    print(f"✅ Enviado a {contacto['telefono']}")
 
 
 def marcar_enviado(ws, contacto, valor=1):
-    """Actualiza Num de contacto y fecha en Excel"""
+    """Marca resultado"""
+
     hoy = date.today().strftime("%d/%m/%Y")
 
     if contacto["col_num"]:
-        ws.cell(row=contacto["fila"], column=contacto["col_num"]).value = valor
+
+        ws.cell(
+            row=contacto["fila"],
+            column=contacto["col_num"]
+        ).value = valor
 
     if contacto["col_fecha"]:
-        ws.cell(row=contacto["fila"], column=contacto["col_fecha"]).value = hoy
+
+        ws.cell(
+            row=contacto["fila"],
+            column=contacto["col_fecha"]
+        ).value = hoy
 
 
 def mostrar_alerta_error(mensaje):
-    """Popup de error con sonido"""
-    winsound.PlaySound("SystemHand", winsound.SND_ALIAS)
+    """Popup error"""
+
+    winsound.PlaySound(
+        "SystemHand",
+        winsound.SND_ALIAS
+    )
+
     ctypes.windll.user32.MessageBoxW(
-        0, mensaje,
+        0,
+        mensaje,
         "Error — Lubricentro O'Higgins",
         0x00001000 | 0x00000010
     )
 
 
 def mostrar_alerta_final(enviados, errores):
-    """Popup de resumen al finalizar"""
+    """Popup final"""
+
     pyautogui.hotkey("win", "d")
+
     time.sleep(0.5)
 
-    mensaje = f"Proceso finalizado.\n\n✅ Enviados: {enviados}"
-    if errores:
-        mensaje += f"\n⚠️ Con error: {errores} (marcados con 0 en la base)"
+    mensaje = (
+        f"Proceso finalizado.\n\n"
+        f"✅ Enviados: {enviados}"
+    )
 
-    winsound.PlaySound("SystemHand", winsound.SND_ALIAS)
+    if errores:
+
+        mensaje += (
+            f"\n⚠️ Con error: {errores}"
+        )
+
+    winsound.PlaySound(
+        "SystemHand",
+        winsound.SND_ALIAS
+    )
+
     ctypes.windll.user32.MessageBoxW(
-        0, mensaje,
+        0,
+        mensaje,
         "Lubricentro O'Higgins",
         0x00001000 | 0x00000040
     )
@@ -305,73 +394,154 @@ def mostrar_alerta_final(enviados, errores):
 # ─────────────────────────────────────────────────────────────
 
 def main():
+
     print("=" * 55)
-    print("  LUBRICENTRO O'HIGGINS — WhatsApp automático")
+    print(" LUBRICENTRO O'HIGGINS — WhatsApp automático")
     print("=" * 55)
 
-    print("\n📂 Cargando base de datos...")
+    print("\n📂 Cargando base...")
+
     wb, ws, encabezados = cargar_excel()
-    print(f"✅ Base cargada: {NOMBRE_HOJA}")
+
+    print(f"\n✅ Base cargada: {NOMBRE_HOJA}")
 
     print("\n🔍 Buscando pendientes...")
-    todos = seleccionar_contactos(ws, encabezados)
+
+    todos = seleccionar_contactos(
+        ws,
+        encabezados
+    )
 
     if not todos:
+
         print("\n✅ No hay pendientes.")
-        mostrar_alerta_final(enviados=0, errores=0)
+
+        mostrar_alerta_final(
+            enviados=0,
+            errores=0
+        )
+
         sys.exit(0)
 
     tanda = todos[:CANTIDAD_POR_TANDA]
 
-    print(f"\n📋 Encontré {len(todos)} pendientes — enviando {len(tanda)} hoy")
-    print("-" * 55)
-    for i, c in enumerate(tanda, 1):
-        print(f"  {i:2}. {c['nombre']:<25} | {c['patente']} | {c['km']} km")
+    print(
+        f"\n📋 Encontré {len(todos)} pendientes"
+    )
+
+    print(
+        f"🚀 Enviando {len(tanda)} hoy"
+    )
+
     print("-" * 55)
 
-    confirmacion = input(f"\n¿Confirmar envío de {len(tanda)} mensajes? (s/n): ").strip().lower()
+    for i, c in enumerate(tanda, 1):
+
+        print(
+            f"{i:2}. "
+            f"{c['nombre']:<25} | "
+            f"{c['patente']} | "
+            f"{c['km']} km"
+        )
+
+    print("-" * 55)
+
+    confirmacion = input(
+        f"\n¿Confirmar envío? (s/n): "
+    ).strip().lower()
+
     if confirmacion != "s":
-        print("❌ Envío cancelado.")
+
+        print("❌ Cancelado.")
+
         sys.exit(0)
 
-    print("\n⚠️  Asegurate de tener WhatsApp Desktop abierto.")
+    print("\n⚠️ Abrí WhatsApp Desktop")
+
     print("⏳ Comenzando en 5 segundos...")
+
     time.sleep(5)
 
     enviados = 0
     errores  = 0
 
     for i, contacto in enumerate(tanda, 1):
-        print(f"\n[{i}/{len(tanda)}] {contacto['nombre']} — {contacto['patente']}")
+
+        print(
+            f"\n[{i}/{len(tanda)}] "
+            f"{contacto['nombre']}"
+        )
+
         try:
+
             enviar_mensaje(contacto)
-            marcar_enviado(ws, contacto, valor=1)
+
+            marcar_enviado(
+                ws,
+                contacto,
+                valor=1
+            )
+
             enviados += 1
+
         except Exception as e:
-            print(f"   ⚠️  Error al enviar: {e} — marcando como no contactado (0)")
-            marcar_enviado(ws, contacto, valor=0)
+
+            print(f"⚠️ Error: {e}")
+
+            marcar_enviado(
+                ws,
+                contacto,
+                valor=0
+            )
+
             errores += 1
 
         if i < len(tanda):
-            delay = random.uniform(DELAY_MIN, DELAY_MAX)
-            print(f"   ⏳ Esperando {delay:.1f}s...")
+
+            delay = random.uniform(
+                DELAY_MIN,
+                DELAY_MAX
+            )
+
+            print(
+                f"⏳ Esperando "
+                f"{delay:.1f}s..."
+            )
+
             time.sleep(delay)
 
     print("\n💾 Guardando cambios...")
+
     try:
+
         wb.save(RUTA_EXCEL)
-        print("✅ Base actualizada.")
+
+        print("✅ Base guardada.")
+
     except PermissionError:
-        print("⚠️  No pude guardar el Excel (¿está abierto?).")
-        mostrar_alerta_error("No pude guardar el Excel.\n\n¿Está abierto?")
 
-    print(f"\n{'='*55}")
-    print(f"  ✅ Enviados:  {enviados}")
+        print(
+            "⚠️ No pude guardar "
+            "(¿Excel abierto?)"
+        )
+
+        mostrar_alerta_error(
+            "No pude guardar el Excel."
+        )
+
+    print("\n" + "=" * 55)
+
+    print(f"✅ Enviados: {enviados}")
+
     if errores:
-        print(f"  ⚠️  Con error: {errores}")
-    print(f"{'='*55}\n")
+        print(f"⚠️ Errores: {errores}")
 
-    mostrar_alerta_final(enviados, errores)
+    print("=" * 55)
+
+    mostrar_alerta_final(
+        enviados,
+        errores
+    )
 
 
 if __name__ == "__main__":
