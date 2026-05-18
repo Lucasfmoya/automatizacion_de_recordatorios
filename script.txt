@@ -1,0 +1,1 @@
+python "\\DESKTOP-PCFS020\compartir\SOPORTE 2\LUBRICENTRO\Macros\Nuevas planillas de mensajes\lubricentro_whatsapp.py"
