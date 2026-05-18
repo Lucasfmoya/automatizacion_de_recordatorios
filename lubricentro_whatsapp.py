@@ -38,11 +38,11 @@ FILA_ENCABEZADOS = 1
 
 # ── Columnas Excel ──────────────────────────────────────────
 COL_CLIENTE       = "Cliente"
-COL_TELEFONO      = "Teléfono"           # columna B — se limpia automáticamente
+COL_TELEFONO      = "Contacto"          
 COL_AUTO          = "Auto"
 COL_PATENTE       = "Patente"
 COL_KMTS_PROX     = "Kmts Prox. Cambio"
-COL_NUM_CONTACTOS = "Num de contacto"    # vacío = pendiente | 1 = enviado | 0 = no contactado
+COL_NUM_CONTACTOS = "Num de contacto"    
 COL_FECHA_ENVIO   = "Repuesta 1"
 
 # ── Configuración envío ─────────────────────────────────────
