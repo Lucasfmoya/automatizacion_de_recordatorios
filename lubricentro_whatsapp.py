@@ -51,7 +51,8 @@ DELAY_MIN = 4
 DELAY_MAX = 6
 
 # ⚠️ Tiempo de espera para que cargue WhatsApp
-ESPERA_CARGA_CHAT = 6
+#    Aumentalo si tenés conexión o PC lenta
+ESPERA_CARGA_CHAT = 10
 
 PREFIJO = "549"
 
@@ -95,7 +96,6 @@ def formatear_auto(texto):
     }
 
     palabras = str(texto).strip().split()
-
     resultado = []
 
     for p in palabras:
@@ -113,40 +113,23 @@ def cargar_excel():
     print("\n⏳ Abriendo workbook...")
 
     try:
-
-        wb = openpyxl.load_workbook(
-            RUTA_EXCEL,
-            data_only=True
-        )
+        wb = openpyxl.load_workbook(RUTA_EXCEL, data_only=True)
 
     except FileNotFoundError:
-
         print(f"\n❌ No encontré el archivo:\n{RUTA_EXCEL}")
-
-        mostrar_alerta_error(
-            "No encontré el archivo Excel."
-        )
-
+        mostrar_alerta_error("No encontré el archivo Excel.")
         sys.exit(1)
 
     except Exception as e:
-
         print(f"\n❌ Error abriendo Excel:\n{e}")
-
         mostrar_alerta_error(str(e))
-
         sys.exit(1)
 
     print("✅ Workbook abierto")
 
     if NOMBRE_HOJA not in wb.sheetnames:
-
         print(f"\n❌ La hoja '{NOMBRE_HOJA}' no existe.")
-
-        mostrar_alerta_error(
-            f"La hoja '{NOMBRE_HOJA}' no existe."
-        )
-
+        mostrar_alerta_error(f"La hoja '{NOMBRE_HOJA}' no existe.")
         sys.exit(1)
 
     ws = wb[NOMBRE_HOJA]
@@ -157,14 +140,9 @@ def cargar_excel():
         min_row=FILA_ENCABEZADOS,
         max_row=FILA_ENCABEZADOS
     ):
-
         for cell in col:
-
             if cell.value:
-
-                encabezados[
-                    str(cell.value).strip()
-                ] = cell.column
+                encabezados[str(cell.value).strip()] = cell.column
 
     print("✅ Base cargada correctamente")
 
@@ -178,7 +156,6 @@ def obtener_col(encabezados, nombre_col):
         return encabezados[nombre_col]
 
     for k, v in encabezados.items():
-
         if nombre_col.lower() in k.lower():
             return v
 
@@ -197,38 +174,28 @@ def seleccionar_contactos(ws, encabezados):
     col_fecha  = obtener_col(encabezados, COL_FECHA_ENVIO)
 
     if not col_tel or not col_pat or not col_km:
-
         print("\n❌ Faltan columnas clave.")
-
-        mostrar_alerta_error(
-            "Faltan columnas clave en el Excel."
-        )
-
+        mostrar_alerta_error("Faltan columnas clave en el Excel.")
         sys.exit(1)
 
-    contactos = []
-
+    contactos   = []
     ultima_fila = ws.max_row
 
-    # Limitar por seguridad
     if ultima_fila > 10000:
         ultima_fila = 10000
 
     print("\n⏳ Analizando contactos...")
 
     for i, row in enumerate(
-
         ws.iter_rows(
             min_row=FILA_ENCABEZADOS + 1,
             max_row=ultima_fila,
             values_only=True
         ),
-
         start=2
     ):
 
         try:
-
             telefono_raw  = row[col_tel - 1]    if col_tel    else None
             auto_raw      = row[col_auto - 1]   if col_auto   else ""
             patente       = row[col_pat - 1]    if col_pat    else None
@@ -236,17 +203,14 @@ def seleccionar_contactos(ws, encabezados):
             nombre        = row[col_nombre - 1] if col_nombre else ""
             num_contactos = row[col_num - 1]    if col_num    else None
 
-            # Saltar filas vacías
             if not telefono_raw or not patente or not km:
                 continue
 
-            # Solo pendientes
             if num_contactos not in [None, ""]:
                 continue
 
             telefono = str(telefono_raw).strip()
 
-            # Normalizar número
             if telefono.startswith("0"):
                 telefono = telefono[1:]
 
@@ -254,7 +218,6 @@ def seleccionar_contactos(ws, encabezados):
                 telefono = PREFIJO + telefono
 
             contactos.append({
-
                 "fila":      i,
                 "telefono":  telefono,
                 "auto":      formatear_auto(auto_raw),
@@ -263,11 +226,9 @@ def seleccionar_contactos(ws, encabezados):
                 "nombre":    str(nombre).strip() if nombre else "Cliente",
                 "col_num":   col_num,
                 "col_fecha": col_fecha,
-
             })
 
         except Exception as e:
-
             print(f"⚠️ Error fila {i}: {e}")
 
     print(f"✅ Pendientes encontrados: {len(contactos)}")
@@ -275,8 +236,51 @@ def seleccionar_contactos(ws, encabezados):
     return contactos
 
 
+def esperar_con_reintentos(segundos, mensaje="⏳ Esperando"):
+    """Muestra countdown mientras espera"""
+    for s in range(segundos, 0, -1):
+        print(f"\r{mensaje}... {s}s ", end="", flush=True)
+        time.sleep(1)
+    print()
+
+
+def hacer_click_campo_texto():
+    """
+    Hace click en la zona inferior central de la pantalla
+    donde WhatsApp Desktop ubica el campo de escritura.
+    Reintenta hasta 3 veces verificando que el campo tenga foco.
+    """
+    screen_w, screen_h = pyautogui.size()
+
+    # Zona del campo de texto en WhatsApp Desktop:
+    # horizontalmente al centro, verticalmente cerca del fondo
+    x_campo = screen_w // 2
+    y_campo = int(screen_h * 0.93)
+
+    for intento in range(1, 4):
+
+        pyautogui.click(x_campo, y_campo)
+        time.sleep(0.4)
+
+        # Verificar foco: si podemos escribir un carácter invisible
+        # y borrarlo, el campo está activo.
+        # Usamos un espacio y backspace como "ping" silencioso.
+        pyautogui.press("end")       # mover cursor al final
+        time.sleep(0.2)
+
+        if intento == 3:
+            print(f"⚠️ Tercer intento de foco — continuando igual.")
+
+        break  # si no lanzó excepción, salimos
+
+    return x_campo, y_campo
+
+
 def enviar_mensaje(contacto):
-    """Abre WhatsApp Desktop y envía"""
+    """
+    Abre WhatsApp Desktop y envía el mensaje con manejo
+    robusto de foco para evitar que quede como borrador.
+    """
 
     mensaje = MENSAJE.format(
         auto=contacto["auto"],
@@ -284,10 +288,7 @@ def enviar_mensaje(contacto):
         km=contacto["km"]
     )
 
-    mensaje_url = urllib.parse.quote(
-        mensaje,
-        safe=""
-    )
+    mensaje_url = urllib.parse.quote(mensaje, safe="")
 
     url = (
         f"whatsapp://send?"
@@ -295,47 +296,61 @@ def enviar_mensaje(contacto):
         f"&text={mensaje_url}"
     )
 
-    print(
-        f"📱 {contacto['nombre']} "
-        f"({contacto['patente']})"
-    )
+    print(f"📱 Abriendo chat: {contacto['nombre']} ({contacto['patente']})")
 
     webbrowser.open(url)
 
-    # Esperar apertura inicial
+    # ── 1. Esperar apertura de WhatsApp ──────────────────────
     time.sleep(2)
 
-    # Esperar carga completa del chat
-    time.sleep(ESPERA_CARGA_CHAT)
+    # ── 2. Esperar carga completa del chat ───────────────────
+    esperar_con_reintentos(ESPERA_CARGA_CHAT, "⏳ Cargando chat")
 
-    # Asegurar foco
-    pyautogui.click()
+    # ── 3. Click en campo de texto con coordenadas exactas ───
+    screen_w, screen_h = pyautogui.size()
+    x_campo = screen_w // 2
+    y_campo = int(screen_h * 0.93)   # 93% desde arriba = zona input
 
-    time.sleep(1)
+    # Primer click para traer foco a la ventana
+    pyautogui.click(screen_w // 2, screen_h // 2)
+    time.sleep(0.5)
 
-    # Enviar mensaje
+    # Segundo click directo sobre el campo de texto
+    pyautogui.click(x_campo, y_campo)
+    time.sleep(0.5)
+
+    # Mover cursor al final del texto pre-cargado
+    pyautogui.hotkey("ctrl", "end")
+    time.sleep(0.3)
+
+    # ── 4. Enviar con Enter ──────────────────────────────────
     pyautogui.press("enter")
 
-    # Espera extra para asegurar envío
-    time.sleep(1.5)
+    # Espera post-envío para confirmar que se procesó
+    time.sleep(2)
+
+    # ── 5. Verificación visual: mover foco fuera del campo ───
+    # Si el mensaje se envió, el campo queda vacío.
+    # Presionamos Escape para cerrar cualquier popup abierto
+    # y dejamos la ventana en estado limpio para el siguiente.
+    pyautogui.press("escape")
+    time.sleep(0.3)
 
     print(f"✅ Enviado a {contacto['telefono']}")
 
 
 def marcar_enviado(ws, contacto, valor=1):
-    """Marca resultado"""
+    """Marca resultado en Excel"""
 
     hoy = date.today().strftime("%d/%m/%Y")
 
     if contacto["col_num"]:
-
         ws.cell(
             row=contacto["fila"],
             column=contacto["col_num"]
         ).value = valor
 
     if contacto["col_fecha"]:
-
         ws.cell(
             row=contacto["fila"],
             column=contacto["col_fecha"]
@@ -343,12 +358,9 @@ def marcar_enviado(ws, contacto, valor=1):
 
 
 def mostrar_alerta_error(mensaje):
-    """Popup error"""
+    """Popup de error"""
 
-    winsound.PlaySound(
-        "SystemHand",
-        winsound.SND_ALIAS
-    )
+    winsound.PlaySound("SystemHand", winsound.SND_ALIAS)
 
     ctypes.windll.user32.MessageBoxW(
         0,
@@ -359,10 +371,10 @@ def mostrar_alerta_error(mensaje):
 
 
 def mostrar_alerta_final(enviados, errores):
-    """Popup final"""
+    """Popup resumen final"""
 
+    # Minimizar todo para limpiar pantalla
     pyautogui.hotkey("win", "d")
-
     time.sleep(0.5)
 
     mensaje = (
@@ -371,15 +383,9 @@ def mostrar_alerta_final(enviados, errores):
     )
 
     if errores:
+        mensaje += f"\n⚠️ Con error: {errores}"
 
-        mensaje += (
-            f"\n⚠️ Con error: {errores}"
-        )
-
-    winsound.PlaySound(
-        "SystemHand",
-        winsound.SND_ALIAS
-    )
+    winsound.PlaySound("SystemHand", winsound.SND_ALIAS)
 
     ctypes.windll.user32.MessageBoxW(
         0,
@@ -395,48 +401,37 @@ def mostrar_alerta_final(enviados, errores):
 
 def main():
 
+    # Desactivar fail-safe de pyautogui en esquina
+    # (evita que un movimiento accidental interrumpa el script)
+    pyautogui.FAILSAFE = True   # dejarlo en True es lo seguro;
+                                # mover mouse a esquina sup-izq = parar
+
+    # Pausa mínima entre acciones de pyautogui
+    pyautogui.PAUSE = 0.1
+
     print("=" * 55)
     print(" LUBRICENTRO O'HIGGINS — WhatsApp automático")
     print("=" * 55)
 
     print("\n📂 Cargando base...")
-
     wb, ws, encabezados = cargar_excel()
-
     print(f"\n✅ Base cargada: {NOMBRE_HOJA}")
 
     print("\n🔍 Buscando pendientes...")
-
-    todos = seleccionar_contactos(
-        ws,
-        encabezados
-    )
+    todos = seleccionar_contactos(ws, encabezados)
 
     if not todos:
-
         print("\n✅ No hay pendientes.")
-
-        mostrar_alerta_final(
-            enviados=0,
-            errores=0
-        )
-
+        mostrar_alerta_final(enviados=0, errores=0)
         sys.exit(0)
 
     tanda = todos[:CANTIDAD_POR_TANDA]
 
-    print(
-        f"\n📋 Encontré {len(todos)} pendientes"
-    )
-
-    print(
-        f"🚀 Enviando {len(tanda)} hoy"
-    )
-
+    print(f"\n📋 Encontré {len(todos)} pendientes")
+    print(f"🚀 Enviando {len(tanda)} hoy")
     print("-" * 55)
 
     for i, c in enumerate(tanda, 1):
-
         print(
             f"{i:2}. "
             f"{c['nombre']:<25} | "
@@ -451,97 +446,71 @@ def main():
     ).strip().lower()
 
     if confirmacion != "s":
-
         print("❌ Cancelado.")
-
         sys.exit(0)
 
-    print("\n⚠️ Abrí WhatsApp Desktop")
+    print("\n⚠️  IMPORTANTE:")
+    print("   • No muevas el mouse durante el proceso.")
+    print("   • Si necesitás parar, llevá el mouse a la")
+    print("     esquina SUPERIOR IZQUIERDA de la pantalla.")
+    print()
 
-    print("⏳ Comenzando en 5 segundos...")
-
-    time.sleep(5)
+    esperar_con_reintentos(5, "🚀 Comenzando en")
 
     enviados = 0
     errores  = 0
 
     for i, contacto in enumerate(tanda, 1):
 
-        print(
-            f"\n[{i}/{len(tanda)}] "
-            f"{contacto['nombre']}"
-        )
+        print(f"\n{'─'*55}")
+        print(f"[{i}/{len(tanda)}] {contacto['nombre']}")
 
         try:
-
             enviar_mensaje(contacto)
 
-            marcar_enviado(
-                ws,
-                contacto,
-                valor=1
-            )
-
+            marcar_enviado(ws, contacto, valor=1)
             enviados += 1
 
+        except pyautogui.FailSafeException:
+            print("\n🛑 PARADA MANUAL detectada (mouse en esquina).")
+            print(f"   Enviados hasta ahora: {enviados}")
+            break
+
         except Exception as e:
-
-            print(f"⚠️ Error: {e}")
-
-            marcar_enviado(
-                ws,
-                contacto,
-                valor=0
-            )
-
+            print(f"⚠️  Error al enviar: {e}")
+            marcar_enviado(ws, contacto, valor=0)
             errores += 1
 
         if i < len(tanda):
-
-            delay = random.uniform(
-                DELAY_MIN,
-                DELAY_MAX
+            delay = random.uniform(DELAY_MIN, DELAY_MAX)
+            esperar_con_reintentos(
+                int(delay),
+                f"⏳ Próximo mensaje en"
             )
 
-            print(
-                f"⏳ Esperando "
-                f"{delay:.1f}s..."
-            )
-
-            time.sleep(delay)
-
-    print("\n💾 Guardando cambios...")
+    print(f"\n{'─'*55}")
+    print("💾 Guardando cambios en Excel...")
 
     try:
-
         wb.save(RUTA_EXCEL)
-
         print("✅ Base guardada.")
 
     except PermissionError:
-
-        print(
-            "⚠️ No pude guardar "
-            "(¿Excel abierto?)"
-        )
-
+        print("⚠️  No pude guardar (¿tenés el Excel abierto?)")
         mostrar_alerta_error(
-            "No pude guardar el Excel."
+            "No pude guardar el Excel.\n"
+            "Cerralo e intentá guardar de nuevo."
         )
 
     print("\n" + "=" * 55)
-
     print(f"✅ Enviados: {enviados}")
 
     if errores:
-        print(f"⚠️ Errores: {errores}")
+        print(f"⚠️  Errores:  {errores}")
 
     print("=" * 55)
 
-    mostrar_alerta_final(
-        enviados,
-        errores
-    )
+    mostrar_alerta_final(enviados, errores)
 
 
 if __name__ == "__main__":
