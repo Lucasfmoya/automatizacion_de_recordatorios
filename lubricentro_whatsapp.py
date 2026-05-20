@@ -13,30 +13,33 @@
 =============================================================
 """
 
-import openpyxl
-import webbrowser
-import urllib.parse
-import time
-import random
-import pyautogui
-import sys
-import ctypes
-import winsound
+import openpyxl  #-*- Lee y escribe en excel -*-
+import webbrowser #-*- Abre la url -*-
+import urllib.parse #-*- Convierte el texto en formato válido para la url -*-
+import time #-*- Para pausas entre mensajes -*-
+import random #-*- Tiempos aleatorios entre mensajes para simular envío manual-*-
+import pyautogui #-*- Control sobre mouse y teclado -*-
+import sys #-*- Cierra el programa -*-
+import ctypes #-*- Para mostrar ventanas popup en windows (la que sale cuando termina el envio) -*-
+import winsound #-*- Reproduce sonidos de windows -*-
 
-from datetime import date
+from datetime import date #-*- Para obtener fecha actual -*-
 
 # ─────────────────────────────────────────────────────────────
 # CONFIGURACIÓN
 # ─────────────────────────────────────────────────────────────
 
-RUTA_EXCEL = r"\\DESKTOP-PCFS020\compartir\SOPORTE 2\LUBRICENTRO\Macros\Nuevas planillas de mensajes\Base de datos.xlsx"
+RUTA_EXCEL = r"\\DESKTOP-PCFS020\compartir\SOPORTE 2\LUBRICENTRO\Macros\Nuevas planillas de mensajes\Base de datos.xlsx" #-*- Ubicación de la base de datos -*-
 
-NOMBRE_HOJA = "BASE 2026"
+NOMBRE_HOJA = "BASE 2026" #-*- Nombre de la hoja de la base de datos -*-
 
-FILA_ENCABEZADOS = 1
+FILA_ENCABEZADOS = 1 #-*- Fila 1 indica el nombre de las columnas que vamos a utilizar -*-
 
 # ── Columnas Excel ──────────────────────────────────────────
-COL_CLIENTE       = "Cliente"
+
+#-*- El valor de cada variable debe ser el nombre con el cual figura la columna dentro de la base de datos -*-
+
+COL_CLIENTE       = "Cliente" 
 COL_TELEFONO      = "Contacto"
 COL_AUTO          = "Auto"
 COL_PATENTE       = "Patente"
@@ -85,24 +88,19 @@ def formatear_km(km):
 
 
 def formatear_auto(texto):
-    """Capitaliza nombre del vehículo respetando siglas"""
+    """
+    Formatea nombre del vehículo
+    tomando solamente las primeras 2 palabras.
+    """
 
     if not texto:
         return ""
 
-    especiales = {
-        "BMW", "GTI", "XLS", "GLI", "VTI", "TDI",
-        "HDI", "SRX", "AMG", "X5", "X6", "GNC"
-    }
+    # Tomar solo las primeras 2 palabras
+    palabras = str(texto).strip().split()[:2]
 
-    palabras = str(texto).strip().split()
-    resultado = []
-
-    for p in palabras:
-        if p.upper() in especiales:
-            resultado.append(p.upper())
-        else:
-            resultado.append(p.capitalize())
+    # Capitalizar cada palabra
+    resultado = [p.capitalize() for p in palabras]
 
     return " ".join(resultado)
 
