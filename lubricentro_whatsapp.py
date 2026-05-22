@@ -45,7 +45,7 @@ COL_AUTO          = "Auto"
 COL_PATENTE       = "Patente"
 COL_KMTS_PROX     = "Kmts Prox. Cambio"
 COL_NUM_CONTACTOS = "Num de contacto"
-COL_FECHA_ENVIO   = "Repuesta 1"
+COL_FECHA_ENVIO   = "Observaciones"
 
 # ── Configuración envío ─────────────────────────────────────
 CANTIDAD_POR_TANDA = 10
